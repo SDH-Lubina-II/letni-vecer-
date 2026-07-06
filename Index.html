@@ -1,1 +1,316 @@
+<!DOCTYPE html>
+<html lang="cs">
 
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motání hadic</title>
+
+<style>
+body{
+font-family:Arial;
+background:#ececec;
+padding:20px;
+}
+
+.container{
+max-width:1100px;
+margin:auto;
+background:#fff;
+padding:20px;
+border-radius:10px;
+}
+
+header{
+text-align:center;
+margin-bottom:20px;
+}
+
+input,button{
+padding:10px;
+margin:5px;
+}
+
+button{
+background:#2e7d32;
+color:#fff;
+border:none;
+border-radius:5px;
+cursor:pointer;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+margin-top:20px;
+}
+
+th,td{
+border:1px solid #ccc;
+padding:8px;
+text-align:center;
+}
+
+th{
+background:#c62828;
+color:white;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<header>
+<h1>🚒 Letní večer SDH Lubina II Větřkovice</h1>
+<h2>18. července 2026</h2>
+</header>
+
+<div>
+<input id="prijmeni" placeholder="Příjmení">
+<input id="jmeno" placeholder="Jméno">
+<button onclick="pridat()">Přidat</button>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Příjmení</th>
+<th>Jméno</th>
+<th>Akce</th>
+</tr>
+</thead>
+
+<tbody id="tab"></tbody>
+</table>
+
+</div>
+
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  onSnapshot,
+  deleteDoc,
+  doc,
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBnHKiL6ANjvRbUpd3sv4TwGuq7-4_c6J8",
+  authDomain: "zkouska-2.firebaseapp.com",
+  projectId: "zkouska-2",
+  storageBucket: "zkouska-2.firebasestorage.app",
+  messagingSenderId: "51239007198",
+  appId: "1:51239007198:web:4e98cdfd91279a337da34f"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// 👉 TADY JE TVÁ KOLEKCE
+const col = collection(db, "motani_hadic");
+
+let data = [];
+function validTime(t){
+
+    if(!t.includes(":")) return false;
+
+    const casti = t.split(":");
+
+    if(casti.length !== 2) return false;
+
+    const sekundy = Number(casti[0]);
+    const setiny = Number(casti[1]);
+
+    if(isNaN(sekundy) || isNaN(setiny)) return false;
+
+    // sekundy mohou být libovolně vysoké
+    if(sekundy < 0) return false;
+
+    // setiny musí být 00–99
+    if(setiny < 0 || setiny > 99) return false;
+
+    return true;
+}
+/* ================= REALTIME ================= */
+onSnapshot(col, (snap) => {
+
+data = [];
+
+snap.forEach(d => {
+data.push({ id: d.id, ...d.data() });
+});
+
+render();
+
+});
+
+/* ================= ADD ================= */
+window.pridat = async function(){
+
+const p = document.getElementById("prijmeni").value.trim();
+const j = document.getElementById("jmeno").value.trim();
+
+if(!p || !j) return;
+
+await addDoc(col,{
+prijmeni:p,
+jmeno:j,
+pokusy:[],
+nejlepsi:""
+});
+
+document.getElementById("prijmeni").value="";
+document.getElementById("jmeno").value="";
+};
+
+/* ================= DELETE ================= */
+window.smaz = async function(id){
+
+const potvrdit = confirm("Opravdu chceš smazat tohoto soutěžícího?");
+
+if(!potvrdit){
+    return;
+}
+
+await deleteDoc(doc(db,"motani_hadic",id));
+
+};
+
+/* ================= EDIT ================= */
+window.edit = async function(id){
+
+const z = data.find(s=>s.id===id);
+
+const p = prompt("Příjmení:", z.prijmeni);
+if(!p) return;
+
+const j = prompt("Jméno:", z.jmeno);
+if(!j) return;
+
+await updateDoc(doc(db,"motani_hadic",id),{
+prijmeni:p,
+jmeno:j
+});
+
+};
+
+/* ================= RENDER ================= */
+window.render = function(){
+
+  const t = document.getElementById("tab");
+  t.innerHTML = "";
+
+  data.forEach((z,i)=>{
+    t.innerHTML += `
+      <tr>
+        <td>${i+1}</td>
+        <td>${z.prijmeni}</td>
+        <td>${z.jmeno}</td>
+        <td>
+          <button onclick="edit('${z.id}')">✏️</button>
+          <button onclick="smaz('${z.id}')">🗑️</button>
+          <button onclick="pridatPokus('${z.id}')">➕</button>
+        </td>
+        <td>${z.nejlepsi || "-"}</td>
+        <td>
+  ${(z.pokusy || []).map((c, i) => `
+    <div onclick="editPokus('${z.id}', ${i})"
+         style="cursor:pointer; padding:2px;">
+      ⏱ ${c}
+    </div>
+  `).join("")}
+</td>
+      </tr>
+    `;
+  });
+
+};
+window.pridatPokus = async function(id){
+
+const cas = prompt("Zadej čas (15:23)");
+if(!cas) return;
+
+if(!validTime(cas)){
+alert("Špatný čas! Použij HH:MM (např. 15:30)");
+return;
+}
+if(!cas) return;
+
+const z = data.find(s=>s.id===id);
+if(!z) return;
+
+const pokusy = z.pokusy || [];
+pokusy.push(cas);
+
+// výpočet nejlepšího času
+let nej = pokusy[0];
+
+for(let i=1;i<pokusy.length;i++){
+
+const [m1,s1] = nej.split(":").map(Number);
+const [m2,s2] = pokusy[i].split(":").map(Number);
+
+if((m2*60+s2) < (m1*60+s1)){
+nej = pokusy[i];
+}
+}
+
+await updateDoc(doc(db,"motani_hadic",id),{
+pokusy:pokusy,
+nejlepsi:nej
+});
+
+};
+window.editPokus = async function(id,index){
+
+const z = data.find(s => s.id === id);
+
+if(!z || !Array.isArray(z.pokusy)) return;
+
+const stare = z.pokusy[index];
+if(!stare) return;
+
+const novy = prompt("Upravit čas (15:23):", stare);
+if(!novy) return;
+
+// validace (pokud ji chceš používat)
+if(typeof validTime === "function"){
+if(!validTime(novy)){
+alert("Špatný čas! Použij HH:MM");
+return;
+}
+}
+
+// uložíme změnu
+z.pokusy[index] = novy;
+
+// výpočet nejlepšího času
+let nej = z.pokusy[0];
+
+for(let i=1;i<z.pokusy.length;i++){
+
+const [m1,s1] = nej.split(":").map(Number);
+const [m2,s2] = z.pokusy[i].split(":").map(Number);
+
+if((m2*60+s2) < (m1*60+s1)){
+nej = z.pokusy[i];
+}
+}
+
+await updateDoc(doc(db,"motani_hadic",id),{
+pokusy:z.pokusy,
+nejlepsi:nej
+});
+
+};
+</script>
+
+</body>
+</html>
